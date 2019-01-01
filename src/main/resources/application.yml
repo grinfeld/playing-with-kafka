@@ -1,0 +1,6 @@
+spring:
+  kafka:
+    listener:
+      ack-mode: record
+      concurrency: 3
+    bootstrap-servers: kafka-1:9092,kafka-2:29092,kafka-3:39092
