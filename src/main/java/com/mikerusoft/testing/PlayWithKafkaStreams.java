@@ -27,6 +27,11 @@ public class PlayWithKafkaStreams {
         config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
         StreamsBuilder streamsBuilder = new StreamsBuilder();
+        defineStream(streamsBuilder);
+        startTest(new KafkaStreams(streamsBuilder.build(), config));
+    }
+
+    private static void defineStream(StreamsBuilder streamsBuilder) {
         streamsBuilder.stream("stream-test0", Consumed.<String, String>with((record, previousTimestamp) -> extractMyTimeFrom(record)))
             .map((KeyValueMapper<String, String, KeyValue<String, TestObject>>) (key, value) -> new KeyValue<>(key, getTestObject(value)))
             .peek((key, value) -> System.out.println(key + " --- " + value))
@@ -41,9 +46,9 @@ public class PlayWithKafkaStreams {
             .map((KeyValueMapper<Windowed<String>, ArrayList, KeyValue<String, String>>)
                     PlayWithKafkaStreams::prepareDataToOutput)
         .to("output-stream0");
+    }
 
-        KafkaStreams streams = new KafkaStreams(streamsBuilder.build(), config);
-
+    private static void startTest(KafkaStreams streams) {
         final CountDownLatch latch = new CountDownLatch(1);
 
         Runtime.getRuntime().addShutdownHook(new Thread("streams-test-shutdown-hook") {
