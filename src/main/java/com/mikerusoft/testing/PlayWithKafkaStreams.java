@@ -17,7 +17,7 @@ import java.util.stream.Stream;
 
 public class PlayWithKafkaStreams {
 
-    public static final int WINDOW_DURATION_SEC = 60;
+    private static final int WINDOW_DURATION_SEC = 60;
 
     public static void main(final String[] args) throws Exception {
 
