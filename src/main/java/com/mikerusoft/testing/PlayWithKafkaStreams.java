@@ -1,23 +1,18 @@
 package com.mikerusoft.testing;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.serialization.Serdes;
-import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.*;
 import org.apache.kafka.streams.kstream.*;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class PlayWithKafkaStreams {
@@ -35,21 +30,25 @@ public class PlayWithKafkaStreams {
 
         StreamsBuilder streamsBuilder = new StreamsBuilder();
         streamsBuilder.stream("stream-test0", Consumed.<String, String>with((record, previousTimestamp) -> extractMyTimeFrom(record)))
-            .map((KeyValueMapper<String, String, KeyValue<String, TestObject>>) (key, value) -> {
-                return new KeyValue<>(key, getTestObject(value));
-            })
+            .map((KeyValueMapper<String, String, KeyValue<String, TestObject>>) (key, value) -> new KeyValue<>(key, getTestObject(value)))
             .peek((key, value) -> System.out.println(key + " --- " + value))
             .selectKey((key, value) -> TimeUtils.extractWindowStart(value.getDate(), WINDOW_DURATION_SEC))
             .groupByKey(Grouped.with(Serdes.String(), new JsonPOJOSerde<>(TestObject.class)))
             .windowedBy(TimeWindows.of(Duration.of(5, ChronoUnit.MINUTES)))
-            .aggregate(LinkedList::new,
-                (Aggregator<String, TestObject, LinkedList<TestObject>>) (key, value, aggregate) -> addToLinkedList(value, aggregate))
-            .toStream().map(new KeyValueMapper<Windowed<String>, LinkedList<TestObject>, KeyValue<Windowed<String>, String>>() {
-            @Override
-            public KeyValue<Windowed<String>, String> apply(Windowed<String> key, LinkedList<TestObject> value) {
-                return new KeyValue<>(key, writeValueAsString(value));
-            }
-        }).to("output-stream0");
+            .aggregate(ArrayList::new,
+                (key, value, aggregate) -> addToLinkedList(value, aggregate),
+                Materialized.with(Serdes.String(), new JsonPOJOSerde<>(ArrayList.class))
+            )
+            .toStream()
+            .map(new KeyValueMapper<Windowed<String>, ArrayList, KeyValue<String, String>>() {
+                @Override
+                public KeyValue<String, String> apply(Windowed<String> key, ArrayList value) {
+                    Map<Object, Object> window = new HashMap<>();
+                    window.put(key.window().start() + " -- " + key.window().end(), value);
+                    return new KeyValue<>(key.key(), writeValueAsString(window));
+                }
+            })
+        .to("output-stream0");
 
         KafkaStreams streams = new KafkaStreams(streamsBuilder.build(), config);
 
@@ -70,13 +69,6 @@ public class PlayWithKafkaStreams {
             System.exit(1);
         }
         System.exit(0);
-
-        /*new StreamsBuilder().stream("stream-test1", Consumed.with(Serdes.String(), Serdes.String()))
-                .map((KeyValueMapper<String, String, KeyValue<String, TestObject>>) (key, value) -> new KeyValue<>(key, getTestObject(value)))
-                .groupByKey()
-                .windowedBy(TimeWindows.of(Duration.of(5, ChronoUnit.MINUTES)))
-        ;*/
-
     }
 
     private static String writeValueAsString(Object o) {
@@ -87,7 +79,7 @@ public class PlayWithKafkaStreams {
         }
     }
 
-    private static LinkedList<TestObject> addToLinkedList(TestObject value, LinkedList<TestObject> aggregate) {
+    private static ArrayList addToLinkedList(Object value, ArrayList aggregate) {
         aggregate.add(value);
         return aggregate;
     }
