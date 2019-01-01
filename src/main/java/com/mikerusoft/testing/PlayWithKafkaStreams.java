@@ -6,6 +6,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.*;
 import org.apache.kafka.streams.kstream.*;
 
@@ -13,6 +14,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
@@ -38,14 +40,14 @@ public class PlayWithKafkaStreams {
             })
             .peek((key, value) -> System.out.println(key + " --- " + value))
             .selectKey((key, value) -> TimeUtils.extractWindowStart(value.getDate(), WINDOW_DURATION_SEC))
-            .groupByKey()
+            .groupByKey(Grouped.with(Serdes.String(), new JsonPOJOSerde<>(TestObject.class)))
             .windowedBy(TimeWindows.of(Duration.of(5, ChronoUnit.MINUTES)))
             .aggregate(LinkedList::new,
                 (Aggregator<String, TestObject, LinkedList<TestObject>>) (key, value, aggregate) -> addToLinkedList(value, aggregate))
-            .toStream().map(new KeyValueMapper<Windowed<String>, LinkedList<TestObject>, KeyValue<?, ?>>() {
+            .toStream().map(new KeyValueMapper<Windowed<String>, LinkedList<TestObject>, KeyValue<Windowed<String>, String>>() {
             @Override
-            public KeyValue<?, ?> apply(Windowed<String> key, LinkedList<TestObject> value) {
-                return new KeyValue<>(key, Stream.of(value.toArray()).map(PlayWithKafkaStreams::writeValueAsString).toArray());
+            public KeyValue<Windowed<String>, String> apply(Windowed<String> key, LinkedList<TestObject> value) {
+                return new KeyValue<>(key, writeValueAsString(value));
             }
         }).to("output-stream0");
 
