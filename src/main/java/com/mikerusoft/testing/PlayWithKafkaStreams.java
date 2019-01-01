@@ -3,7 +3,6 @@ package com.mikerusoft.testing;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.*;
 import org.apache.kafka.streams.kstream.*;
@@ -13,7 +12,6 @@ import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.stream.Stream;
 
 public class PlayWithKafkaStreams {
 
@@ -85,11 +83,7 @@ public class PlayWithKafkaStreams {
     }
 
     private static long extractMyTimeFrom(ConsumerRecord<Object, Object> record) {
-        return Stream.of(record.headers().toArray()).filter(h -> "mytime".equals(h.key()))
-                .findAny()
-                .map(Header::value).map(bs -> ByteBuffer.wrap(bs).getLong())
-                .map(l -> TimeUtils.extractWindowStartDate(l, WINDOW_DURATION_SEC))
-                .orElse(0L);
+        return ByteBuffer.wrap(record.headers().lastHeader("mytime").value()).getLong();
     }
 
     private static ObjectMapper mapper = new ObjectMapper();
