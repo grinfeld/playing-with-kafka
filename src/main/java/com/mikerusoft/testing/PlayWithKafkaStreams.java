@@ -1,5 +1,6 @@
 package com.mikerusoft.testing;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -8,11 +9,13 @@ import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.*;
 import org.apache.kafka.streams.kstream.*;
 
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedList;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class PlayWithKafkaStreams {
@@ -30,14 +33,21 @@ public class PlayWithKafkaStreams {
 
         StreamsBuilder streamsBuilder = new StreamsBuilder();
         streamsBuilder.stream("stream-test0", Consumed.<String, String>with((record, previousTimestamp) -> extractMyTimeFrom(record)))
-            .map((KeyValueMapper<String, String, KeyValue<String, TestObject>>) (key, value) -> new KeyValue<>(key, getTestObject(value)))
+            .map((KeyValueMapper<String, String, KeyValue<String, TestObject>>) (key, value) -> {
+                return new KeyValue<>(key, getTestObject(value));
+            })
             .peek((key, value) -> System.out.println(key + " --- " + value))
             .selectKey((key, value) -> TimeUtils.extractWindowStart(value.getDate(), WINDOW_DURATION_SEC))
             .groupByKey()
             .windowedBy(TimeWindows.of(Duration.of(5, ChronoUnit.MINUTES)))
             .aggregate(LinkedList::new,
                 (Aggregator<String, TestObject, LinkedList<TestObject>>) (key, value, aggregate) -> addToLinkedList(value, aggregate))
-            .toStream().to("output-stream0");
+            .toStream().map(new KeyValueMapper<Windowed<String>, LinkedList<TestObject>, KeyValue<?, ?>>() {
+            @Override
+            public KeyValue<?, ?> apply(Windowed<String> key, LinkedList<TestObject> value) {
+                return new KeyValue<>(key, Stream.of(value.toArray()).map(PlayWithKafkaStreams::writeValueAsString).toArray());
+            }
+        }).to("output-stream0");
 
         KafkaStreams streams = new KafkaStreams(streamsBuilder.build(), config);
 
@@ -67,6 +77,14 @@ public class PlayWithKafkaStreams {
 
     }
 
+    private static String writeValueAsString(Object o) {
+        try {
+            return mapper.writeValueAsString(o);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private static LinkedList<TestObject> addToLinkedList(TestObject value, LinkedList<TestObject> aggregate) {
         aggregate.add(value);
         return aggregate;
@@ -75,7 +93,7 @@ public class PlayWithKafkaStreams {
     private static long extractMyTimeFrom(ConsumerRecord<Object, Object> record) {
         return Stream.of(record.headers().toArray()).filter(h -> "mytime".equals(h.key()))
                 .findAny()
-                .map(Header::value).map(ByteUtils::bytesToLong)
+                .map(Header::value).map(bs -> ByteBuffer.wrap(bs).getLong())
                 .map(l -> TimeUtils.extractWindowStartDate(l, WINDOW_DURATION_SEC))
                 .orElse(0L);
     }
