@@ -38,14 +38,8 @@ public class PlayWithKafkaStreams {
                 Materialized.with(Serdes.String(), new JsonPOJOSerde<>(ArrayList.class))
             )
             .toStream()
-            .map(new KeyValueMapper<Windowed<String>, ArrayList, KeyValue<String, String>>() {
-                @Override
-                public KeyValue<String, String> apply(Windowed<String> key, ArrayList value) {
-                    Map<Object, Object> window = new HashMap<>();
-                    window.put(key.window().start() + " -- " + key.window().end(), value);
-                    return new KeyValue<>(key.key(), writeValueAsString(window));
-                }
-            })
+            .map((KeyValueMapper<Windowed<String>, ArrayList, KeyValue<String, String>>)
+                    PlayWithKafkaStreams::prepareDataToOutput)
         .to("output-stream0");
 
         KafkaStreams streams = new KafkaStreams(streamsBuilder.build(), config);
@@ -67,6 +61,12 @@ public class PlayWithKafkaStreams {
             System.exit(1);
         }
         System.exit(0);
+    }
+
+    private static KeyValue<String, String> prepareDataToOutput(Windowed<String> key, ArrayList value) {
+        Map<Object, Object> window = new HashMap<>();
+        window.put(key.window().start() + " -- " + key.window().end(), value);
+        return new KeyValue<>(key.key(), writeValueAsString(window));
     }
 
     private static String writeValueAsString(Object o) {
