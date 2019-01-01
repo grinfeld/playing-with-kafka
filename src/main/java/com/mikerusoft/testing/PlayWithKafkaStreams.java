@@ -52,7 +52,7 @@ public class PlayWithKafkaStreams {
 
         final CountDownLatch latch = new CountDownLatch(1);
 
-        Runtime.getRuntime().addShutdownHook(new Thread("streams-wordcount-shutdown-hook") {
+        Runtime.getRuntime().addShutdownHook(new Thread("streams-test-shutdown-hook") {
             @Override
             public void run() {
                 streams.close();
