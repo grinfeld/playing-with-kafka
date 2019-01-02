@@ -15,12 +15,12 @@ import java.util.concurrent.CountDownLatch;
 
 public class PlayWithKafkaStreams {
 
-    private static final int WINDOW_DURATION_SEC = 1*60;
+    private static final int WINDOW_DURATION_SEC = 5*60;
 
     public static void main(final String[] args) throws Exception {
 
         Properties config = new Properties();
-        config.put(StreamsConfig.APPLICATION_ID_CONFIG, "stam-application13");
+        config.put(StreamsConfig.APPLICATION_ID_CONFIG, "stam-application1");
         config.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka-1:9092");
         config.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
         config.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
