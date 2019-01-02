@@ -15,36 +15,40 @@ import java.util.concurrent.CountDownLatch;
 
 public class PlayWithKafkaStreams {
 
-    private static final int WINDOW_DURATION_SEC = 60;
+    private static final int WINDOW_DURATION_SEC = 1*60;
 
     public static void main(final String[] args) throws Exception {
 
         Properties config = new Properties();
-        config.put(StreamsConfig.APPLICATION_ID_CONFIG, "stam-application");
+        config.put(StreamsConfig.APPLICATION_ID_CONFIG, "stam-application13");
         config.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka-1:9092");
         config.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
         config.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
+        config.put(StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG, 0);
         config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
         StreamsBuilder streamsBuilder = new StreamsBuilder();
         defineStream(streamsBuilder);
-        startTest(new KafkaStreams(streamsBuilder.build(), config));
+        Topology topology = streamsBuilder.build();
+        System.out.println("" + topology.describe());
+        startTest(new KafkaStreams(topology, config));
     }
 
     private static void defineStream(StreamsBuilder streamsBuilder) {
-        streamsBuilder.stream("stream-test0", Consumed.<String, String>with((record, previousTimestamp) -> extractMyTimeFrom(record)))
+        streamsBuilder.<String, String>stream("stream-test0", Consumed.with((record, previousTimestamp) -> extractMyTimeFrom(record)))
             .map((KeyValueMapper<String, String, KeyValue<String, TestObject>>) (key, value) -> new KeyValue<>(key, getTestObject(value)))
-            .peek((key, value) -> System.out.println(key + " --- " + value))
             .selectKey((key, value) -> TimeUtils.extractWindowStart(value.getDate(), WINDOW_DURATION_SEC))
             .groupByKey(Grouped.with(Serdes.String(), new JsonPOJOSerde<>(TestObject.class)))
-            .windowedBy(TimeWindows.of(Duration.of(5, ChronoUnit.MINUTES)))
+            .windowedBy(TimeWindows.of(Duration.of(WINDOW_DURATION_SEC, ChronoUnit.SECONDS)))
             .aggregate(ArrayList::new,
                 (key, value, aggregate) -> addToLinkedList(value, aggregate),
                 Materialized.with(Serdes.String(), new JsonPOJOSerde<>(ArrayList.class))
             )
+            .suppress(Suppressed.untilTimeLimit(Duration.of(WINDOW_DURATION_SEC, ChronoUnit.SECONDS), Suppressed.BufferConfig.unbounded()))
             .toStream()
             .map((KeyValueMapper<Windowed<String>, ArrayList, KeyValue<String, String>>)
                     PlayWithKafkaStreams::prepareDataToOutput)
+                .peek((key, value) -> System.out.println(new Date(System.currentTimeMillis()) + value))
         .to("output-stream0");
     }
 
